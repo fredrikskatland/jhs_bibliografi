@@ -9,6 +9,7 @@
 
 library(shiny)
 require(plotly)
+require(plyr)
 
 
 # Define UI for application that draws a histogram
