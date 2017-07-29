@@ -1,185 +1,137 @@
+#
+# This is a Shiny web application. You can run the application by clicking
+# the 'Run App' button above.
+#
+# Find out more about building applications with Shiny here:
+#
+#    http://shiny.rstudio.com/
+#
+
 library(shiny)
-library(shinydashboard)
-#library(highcharter)
-require(ggplot2)
-require(Cairo)
-require(rgl)
-require(sphereplot)
-#require(shinyRGL)
-require(rglwidget)
 
-info <- read.csv("/home/fredrik/Informasjons modell/10_03_2017_database_sirkus.csv", sep = ";", dec = ",", stringsAsFactors = F)
-colnames(info) <- c("k.datapunkt","s.topic.sektor", "r.modality", "theta.specificity", "theta.polar", "success")
-info$success[is.na(info$success)] <- 0
-
-info$sektor <-info$s.topic.sektor * 4*pi
-
-ownerDummy <- sample(c("Arkitekt","Prosjektleder"), nrow(info), replace = T)
-info$tekst <- "Lorem ipsum dolor sit amet"
-info$owner <- ownerDummy
-
-radius <- function(x,y,z){
-  sqrt(x^2+y^2+z^2)
-}
-
-theta <- function(x,y,z) {
-  acos(z/radius(x,y,z))
-}
-
-azimuth <- function(x,y,z){
-  atan(y/x)
-}
-
-info$k.datapunkt <- as.numeric(info$k.datapunkt)
-info$s.topic.sektor <- as.numeric(info$s.topic.sektor)
-info$r.modality <- as.numeric(info$r.modality)
-info$theta.specificity <- as.numeric(info$theta.specificity)
-info$theta.polar <- as.numeric(info$theta.polar)
-
-info$sektor.longitude <- 360/jitter(info$s.topic.sektor,5)
-info$specificity.latitude <- info$theta.specificity *  100
-
-
-# RADIUS = MODALITY
-# AZIMUTHAL ANGLE  = SEKTOR
-# PHI = specificity
-
-info$radius <- radius(x = info$s.topic.sektor, y = info$r.modality, z = info$theta.specificity)
-
-
-
-ui <- shinyUI(fluidPage(
-  sidebarPanel(
-    sliderInput("modality", "Modality:", 0.5, min = 0, max = 1),
-    sliderInput("spesificity", "Spesificity:", 0, min = -1, max = 1, step = 0.1),
-    selectInput("emne", "Emne",  paste("emne",seq(0,28))),
-    selectInput("owner", "Sagt av", c("Jørgen","Fredrik","Mordi","Fardin")),
-    textAreaInput("tekst", "Tekst", NULL),
-    submitButton(text = "Legg til", icon = icon("check-square"))
-  ),
-  mainPanel(
-        rglwidgetOutput('thewidget1'),
-      
-      fluidRow(
-        column(width = 3,
-               verbatimTextOutput("click_info")
+# Define UI for application that draws a histogram
+ui <- fluidPage(
+   
+   # Application title
+   titlePanel("Visualisering av bibliografi"),
+   
+   # Sidebar with a slider input for number of bins 
+   sidebarLayout(
+      sidebarPanel(
+        p("CSV-fil MED FORMAT X;Y;KLASSE;YEAR;AUTHOR;JOURNAL;TITLE;etc. Ingen tegn i header"),
+        tableOutput("example"),
+        fileInput("file1", "CSV FIL",
+                  accept = c(
+                    "text/csv",
+                    "text/comma-separated-values,text/plain",
+                    ".csv")
         ),
-        column(width = 3,
-               verbatimTextOutput("dblclick_info")
-        )
+        tags$hr(),
+        checkboxInput("header", "Header", TRUE),
+        textInput("cluster1", "cluster1", "metafysikk"),
+        textInput("cluster2", "cluster2", "informasjonsteori"),
+        textInput("cluster3", "cluster3", "vitenskapsteori")
       ),
-      fluidRow(
-        column(width = 3,
-               verbatimTextOutput("hover_info")
-        ),
-        column(width = 3,
-               verbatimTextOutput("brush_info")
-        )
+      
+      # Show a plot of the generated distribution
+      mainPanel(
+        plotlyOutput("plot"),
+        tableOutput("contents")
       )
-    )
-))
+   )
+)
 
-
-                   
-                   
-                   
-    #plotlyOutput("plot1"),
-    # plotOutput("plot2", width=600, 
-    #            click = "plot_click",
-    #            dblclick = dblclickOpts(
-    #              id = "plot_dblclick"
-    #            ),
-    #            hover = hoverOpts(
-    #              id = "plot_hover"
-    #            ),
-    #            brush = brushOpts(
-    #              id = "plot_brush")
-    #            ),
-
-options(rgl.useNULL = TRUE)
-
+# Define server logic required to draw a histogram
 server <- function(input, output) {
-
-  data.reactive <- reactive({
-    
-    info <- read.csv("/home/fredrik/Informasjons modell/10_03_2017_database_sirkus.csv", sep = ";", dec = ",", stringsAsFactors = F)
-    colnames(info) <- c("k.datapunkt","s.topic.sektor", "r.modality", "theta.specificity", "theta.polar", "success")
-    info$success[is.na(info$success)] <- 0
-    
-    info$sektor <-info$s.topic.sektor * 4*pi
-    
-    ownerDummy <- sample(c("Arkitekt","Prosjektleder"), nrow(info), replace = T)
-    info$tekst <- "Lorem ipsum dolor sit amet"
-    info$owner <- ownerDummy
-    
-    info$k.datapunkt <- as.numeric(info$k.datapunkt)
-    info$s.topic.sektor <- as.numeric(info$s.topic.sektor)
-    info$r.modality <- as.numeric(info$r.modality)
-    info$theta.specificity <- as.numeric(info$theta.specificity)
-    info$theta.polar <- as.numeric(info$theta.polar)
-    
-    info$sektor.longitude <- 360/jitter(info$s.topic.sektor,5)
-    info$specificity.latitude <- info$theta.specificity *  100
-    
+  
+  example.df <- structure(list(AUTHOR = structure(c(3L, 4L, 31L, 30L, 28L), .Label = c("A.F.CHALMERS", 
+                                                                                       "André De Tienne", "Baker, L. R.", "BORGHINI, ANDREA", "CASSIRER, E", 
+                                                                                       "Chen, M. & Floridi, L. ", "CLAUS EMMECHE", "Claus Emmeche*, Simo Køppe** and Frederik Stjernfelt***", 
+                                                                                       "Franseen, Maarten; Kroes, Peter; Reydon, Thomas A.C.; Vermaas, Pieter E. (editors)", 
+                                                                                       "Gary Fuhrman", "João Queiroza,b, Claus Emmechec and Charbel Niño El-Hania", 
+                                                                                       "Jørgen", "Koslicki, Kathrin", "LAKATOS, I.", "Martin J Eppler", 
+                                                                                       "Pattee, H.H.", "Peirce, C.S.", "POPPER, K.", "QUEIROZ, J., EMMECHE, C.", 
+                                                                                       "QUINE, W.V.", "QUINE, W.V., ULLIAN, J.S.", "Sami Pihlstrom", 
+                                                                                       "SHANNON, C. E., WEAVER, W", "Simons, Peter", "Søren Brier ", 
+                                                                                       "Stanley N. Salthe", "Thagard, Paul,", "Thomasson, Annie L", 
+                                                                                       "TUFTE, E. R.", "Vetter, Barbara", "Whitehead, Alfred North ", 
+                                                                                       "William H. B. Mcauliffe", "Winfried Nöth"), class = "factor"), 
+                               YEAR = c(2004L, 2016L, 1979L, 2015L, 2007L), X = c(0.7, 0.8, 
+                                                                                  0.95, 0.9, 0.7), Y = c(0.8, 0.8, 0.95, 0.85, 0.8), klasse = structure(c(2L, 
+                                                                                                                                                          2L, 2L, 2L, 2L), .Label = c("Egen", "Referanse"), class = "factor")), .Names = c("AUTHOR", 
+                                                                                                                                                                                                                                           "YEAR", "X", "Y", "klasse"), row.names = c(NA, 5L), class = "data.frame")
+  
+  output$example <- renderTable(example.df)
+  
+  reactive_clusterNavn <- reactive({
+    clusterNavn <- c(input$cluster1,input$cluster2, input$cluster3)
   })
   
-  x <- rnorm(100)
-  y <- 2*rnorm(100)
-  z <- 10*rnorm(100)
-  open3d()
-  plot3d(x, y, z, col = "red")
-  scene1 <- scene3d()
-  plot3d(z, y, x, col = "green")
-  scene2 <- scene3d()
-  rgl.close()
-  
-  save <- options(rgl.inShiny = TRUE)
-  on.exit(options(save))
-  
-  output$thewidget1 <- renderRglwidget(
-    rglwidget(scene1)
-  )
-  
-  output$thewidget2 <- renderRglwidget(
-    rglwidget(scene2)
-  )
-  
-  # output$plot2 <- renderPlot({
-  #   p <- ggplot(info, aes(x = jitter(sektor,5), y = r.modality, fill = owner))+
-  #     coord_polar() + geom_point(shape = 21) +scale_size_area(max_size = 1)+
-  #     scale_x_continuous(limits = c(0,360), breaks = seq(0,360, by = 360/28), labels = paste("emne",seq(0,28)))+
-  #     scale_y_continuous(limits = c(0,1), breaks = seq(0,1, by = 0.05))+
-  #     theme_bw()
-  #   return(p)
-  # })
-  # 
-  # output$testing <- renderRglwidget({
-  #   data <- data.reactive()
-  #   rgl.sphgrid()
-  #   rgl.sphpoints( long = data$sektor.longitude, 
-  #                  lat = data$specificity.latitude, 
-  #                  radius = data$r.modality, deg = F )
-  #   x <- 45
-  #   rgl.sphpoints(long = x, lat = 45, radius = 0.5)
-  # })
-  
-  output$click_info <- renderPrint({
-    cat("input$plot_click:\n")
-    str(input$plot_click)
+  output$plot <- renderPlotly({
+    
+    inFile <- input$file1
+    
+    if (is.null(inFile))
+      return(NULL)
+    
+    ref.comp <- read.csv(inFile$datapath, header = input$header, sep = ";")
+    
+    ref.comp$X <- as.numeric(as.character(ref.comp$X))
+    ref.comp$Y <- as.numeric(as.character(ref.comp$Y))
+    
+    clusters <- kmeans(ref.comp[,c("X","Y")], centers = 3)
+    ref.comp$rank.x <- match(sort(ref.comp$X), ref.comp$X)
+    ref.comp$rank.y <- match(sort(ref.comp$Y), ref.comp$Y)
+    
+    clusterNavn <- reactive_clusterNavn()
+    
+    set.seed(1)
+    clusters$clusterNavn <- NA
+    clusters$clusterNavn[clusters$cluster == 1] <- clusterNavn[1]
+    clusters$clusterNavn[clusters$cluster == 2] <- clusterNavn[2]
+    clusters$clusterNavn[clusters$cluster == 3] <- clusterNavn[3]
+    
+    centers <- data.frame(X = clusters$centers[,"X"], 
+                          Y = clusters$centers[,"Y"], 
+                          cluster = c(clusterNavn[1],clusterNavn[2],clusterNavn[3]),
+                          clusterNavnMeta = c(clusterNavn[1],clusterNavn[2],clusterNavn[3]))
+    
+    ref.comp$cluster <- clusters$clusterNavn
+    
+    ref.comp <- rbind.fill(ref.comp, centers)
+    
+    ref.comp$klasse[is.na(ref.comp$klasse)] <- "Referanse"
+    
+    t <- list(
+      family = "sans serif",
+      size = 14,
+      color = toRGB("grey50"))
+    
+    plot_ly(data = ref.comp, x = ~X, y = ~Y, 
+            color = ~cluster,
+            symbol = ~klasse, symbols = c('x','circle'),
+            text = ~clusterNavnMeta) %>%
+      add_markers() %>%
+      add_text(textfont = t, textposition = "top right") %>%
+      layout(title = "Relativ distanse til referanser")
+    
   })
-  output$hover_info <- renderPrint({
-    cat("input$plot_hover:\n")
-    str(input$plot_hover)
+   
+  output$contents <- renderTable({
+    # input$file1 will be NULL initially. After the user selects
+    # and uploads a file, it will be a data frame with 'name',
+    # 'size', 'type', and 'datapath' columns. The 'datapath'
+    # column will contain the local filenames where the data can
+    # be found.
+    inFile <- input$file1
+    
+    if (is.null(inFile))
+      return(NULL)
+    
+    read.csv(inFile$datapath, header = input$header, sep = ";")
   })
-  output$dblclick_info <- renderPrint({
-    cat("input$plot_dblclick:\n")
-    str(input$plot_dblclick)
-  })
-  output$brush_info <- renderPrint({
-    cat("input$plot_brush:\n")
-    str(input$plot_brush)
-  })
-  
 }
 
-shinyApp(ui, server)
+# Run the application 
+shinyApp(ui = ui, server = server)
+
