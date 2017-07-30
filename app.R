@@ -152,7 +152,7 @@ server <- function(input, output,session) {
       
       plot_ly(data = ref.comp, x = ~X, y = ~Y, 
               color = ~cluster,
-              symbol = ~klasse, symbols = c('x','circle'),
+              symbol = ~klasse, symbols = c('x','circle'), size = 15,
               text = ~clusterNavnMeta) %>%
         add_markers() %>%
         add_text(textfont = t, textposition = "top right") %>%
